@@ -2,6 +2,7 @@ package Cobo
 
 import (
 	"encoding/json"
+	"net/url"
 	"testing"
 )
 
@@ -60,5 +61,14 @@ func TestGetManhuataiChapterImageList(t *testing.T) {
 	images, err := GetManhuataiChapterImageList(suffix)
 	if err != nil { t.Error(err) }
 
-	t.Log(images)
+	for i := range images {
+		images[i], _ = url.QueryUnescape(images[i])
+	}
+
+	content, err := json.Marshal(images)
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Log("string(content):", string(content))
 }

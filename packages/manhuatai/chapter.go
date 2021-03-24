@@ -5,32 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"path"
 	"regexp"
 	"strconv"
-	"sync"
 )
-
-func (c *Comic) getDefinitionFromStr(definition string) string {
-	if definition == "middle" {
-		return c.Definition.Middle
-	}
-	if definition == "high" {
-		return c.Definition.High
-	}
-	return c.Definition.Low
-}
-
-func (c *Comic) getMaxDefinition() string {
-	if c.Definition.High != "" {
-		return c.Definition.High
-	}
-	if c.Definition.Middle != "" {
-		return c.Definition.Middle
-	}
-	return c.Definition.Low
-}
 
 func (c *Chapter) GetChapterInfoV1() (*Comic, error) {
 	var err error
@@ -52,9 +29,6 @@ func (c *Chapter) GetChapterInfoV1() (*Comic, error) {
 	if len(comicIdMatch) < 2 || len(chapterNewIdMatch) < 2 {
 		return nil, errors.New("cannot match enough chapter info")
 	}
-
-	fmt.Println(comicIdMatch)
-	fmt.Println(chapterNewIdMatch)
 
 	_id, err := strconv.Atoi(comicIdMatch[1])
 	if err != nil { return nil, errors.New(fmt.Sprintf("get comic id error: %v", err)) }
@@ -101,7 +75,7 @@ func GetChapterInfoV10(c *Comic) (*Comic, error) {
 	return tmp.Data, nil
 }
 
-func (c *Chapter) GetAllImageUrl(definition string) ([]string, error) {
+func (c *Chapter) GetAllImageUrl() ([]string, error) {
 	var err error
 	var comic *Comic
 
@@ -113,52 +87,11 @@ func (c *Chapter) GetAllImageUrl(definition string) ([]string, error) {
 		return nil, errors.New(fmt.Sprintf("get chapter info v10 error: %v", err))
 	}
 
+	for i := range comic.CurrentChapter.ChapterImgList {
+		comic.CurrentChapter.ChapterImgList[i], _ = url.QueryUnescape(comic.CurrentChapter.ChapterImgList[i])
+	}
+
 	return comic.CurrentChapter.ChapterImgList, nil
-}
-
-func (c *Chapter) Download(folderPath string) error {
-	var err error
-	folderPath = path.Join(path.Dir(folderPath), path.Base(folderPath))
-	// if folderPath not exist, create
-	if _, err = os.Stat(folderPath); os.IsExist(err) {
-		if err = os.RemoveAll(folderPath); err != nil {
-			return err
-		}
-	}
-
-	if err = os.MkdirAll(folderPath, 0755); err != nil {
-		return err
-	}
-
-	// get all image url
-	allImageUrl, err := c.GetAllImageUrl("high")
-	if err != nil {
-		return err
-	}
-
-	// get image path and save
-	wg := sync.WaitGroup{}
-	errChan := make(chan error)
-	for index := 0; index < len(allImageUrl); index++ {
-		// download
-		imagePath := path.Join(folderPath, fmt.Sprintf("%d.jpg", index+1))
-		wg.Add(1)
-		go downloadFile(allImageUrl[index], imagePath, &wg, errChan)
-	}
-
-	wgDoneChan := make(chan bool)
-	go func() {
-		wg.Wait()
-		close(wgDoneChan)
-	}()
-
-	select {
-	case <-wgDoneChan:
-		fmt.Println("Done")
-	case err = <-errChan:
-		return err
-	}
-	return nil
 }
 
 func NewChapterFromSuffix(suffix string) (*Chapter, error) {

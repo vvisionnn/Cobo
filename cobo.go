@@ -138,5 +138,5 @@ func GetManhuataiChapterImageList(suffix string) ([]string, error) {
 	_chapter, err := manhuatai.NewChapterFromSuffix(suffix)
 	if err != nil { return nil, err }
 
-	return _chapter.GetAllImageUrl("middle")
+	return _chapter.GetAllImageUrl()
 }
