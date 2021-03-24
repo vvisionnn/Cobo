@@ -5,7 +5,7 @@ import (
 	"github.com/gocolly/colly"
 )
 
-func (c *Comic) GetAllChaptersAndExtraInfo() error {
+func (c *ComicDetail) GetAllChaptersAndExtraInfo() error {
 	var err error
 	var allUrl []string
 	var allTitle []string
@@ -39,15 +39,15 @@ func (c *Comic) GetAllChaptersAndExtraInfo() error {
 		c.Chapters[index] = &Chapter{
 			Title: allTitle[index],
 			Url:   allUrl[index],
-			Info:  nil,
 		}
 	}
 	return nil
 }
 
-func NewComic(partUrl string) *Comic {
+
+func NewComic(partUrl string) *ComicDetail {
 	fullUrl := base + partUrl
-	return &Comic{
+	return &ComicDetail{
 		Url: fullUrl,
 	}
 }

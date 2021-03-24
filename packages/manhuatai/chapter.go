@@ -4,84 +4,116 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gocolly/colly"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
-	"strings"
+	"strconv"
 	"sync"
 )
 
-func (c *Chapter) getDefinitionFromStr(definition string) string {
+func (c *Comic) getDefinitionFromStr(definition string) string {
 	if definition == "middle" {
-		return c.Info.Definition.Middle
+		return c.Definition.Middle
 	}
 	if definition == "high" {
-		return c.Info.Definition.High
+		return c.Definition.High
 	}
-	return c.Info.Definition.Low
+	return c.Definition.Low
 }
 
-func (c *Chapter) getMaxDefinition() string {
-	if c.Info.Definition.High != "" {
-		return c.Info.Definition.High
+func (c *Comic) getMaxDefinition() string {
+	if c.Definition.High != "" {
+		return c.Definition.High
 	}
-	if c.Info.Definition.Middle != "" {
-		return c.Info.Definition.Middle
+	if c.Definition.Middle != "" {
+		return c.Definition.Middle
 	}
-	return c.Info.Definition.Low
+	return c.Definition.Low
 }
 
-func (c *Chapter) GetChapterInfo() error {
-	collector := getComicDefaultCollector()
+func (c *Chapter) GetChapterInfoV1() (*Comic, error) {
 	var err error
-	var _infoStr string
-	var chapterInfo ChapterInfo
-	var definitionsRe = regexp.MustCompile(`(?m)window\.\$definitions=({.*?}),`)
-	var infoRe = regexp.MustCompile(`(?m)current_chapter:(.*?),prev_chapter:`)
+	var comic Comic
 
-	collector.OnHTML("body > script:nth-child(3)", func(e *colly.HTMLElement) {
-		_infoStr = e.Text
-	})
-	if err = collector.Visit(c.Url); err != nil {
-		fmt.Println("err:", err)
-	}
+	headers := map[string]string{}
+	for k := range defaultHeaders { headers[k] = defaultHeaders[k] }
+	for k := range chapterHeaders { headers[k] = chapterHeaders[k] }
+
+	htmlContent, err := GetUrlContent(c.Url, headers)
+	if err != nil { return nil, err }
+
+	var comicIdRe = regexp.MustCompile(`(?m)window.comicInfo={comic_id:(.*?),`)
+	var chapterNewIdRe = regexp.MustCompile(`(?m),chapter_newid:"(.*?)",chapter_id`)
 
 	// parse info string
-	definitionsMatch := definitionsRe.FindStringSubmatch(_infoStr)
-	infoMatch := infoRe.FindStringSubmatch(_infoStr)
-	if len(definitionsMatch) < 2 || len(infoMatch) < 2 {
-		return errors.New("cannot match enough chapter info")
+	comicIdMatch := comicIdRe.FindStringSubmatch(htmlContent)
+	chapterNewIdMatch := chapterNewIdRe.FindStringSubmatch(htmlContent)
+	if len(comicIdMatch) < 2 || len(chapterNewIdMatch) < 2 {
+		return nil, errors.New("cannot match enough chapter info")
 	}
 
-	if err = json.Unmarshal(regularJsonStr([]byte(definitionsMatch[1])), &chapterInfo.Definition); err != nil {
-		return err
-	}
-	if err = json.Unmarshal(regularJsonStr([]byte(infoMatch[1])), &chapterInfo); err != nil {
-		return err
+	fmt.Println(comicIdMatch)
+	fmt.Println(chapterNewIdMatch)
+
+	_id, err := strconv.Atoi(comicIdMatch[1])
+	if err != nil { return nil, errors.New(fmt.Sprintf("get comic id error: %v", err)) }
+	c.ChapterNewId = chapterNewIdMatch[1]
+
+	comic = Comic{
+		ComicId: _id,
+		CurrentChapter: c,
 	}
 
-	chapterInfo.ChapterDomain = "https://mhpic." + chapterInfo.ChapterDomain
-	chapterInfo.Rule = strings.Replace(chapterInfo.Rule, "$$", "%d", 1)
-	c.Info = &chapterInfo
-	return nil
+	return &comic, nil
+}
+
+func GetChapterInfoV10(c *Comic) (*Comic, error) {
+	params := url.Values{}
+	params.Add("product_id", "2")
+	params.Add("productname", "mht")
+	params.Add("platformname", "wap")
+	params.Add("comic_id", strconv.Itoa(c.ComicId))
+	params.Add("chapter_newid", c.CurrentChapter.ChapterNewId)
+	params.Add("isWebp", "1")
+	params.Add("quality", DefinitionLow)
+
+	apiUrl := chapterInfoUrl + "?" + params.Encode()
+	headers := map[string]string{}
+	headers["referer"] = c.CurrentChapter.Url
+	for k := range defaultHeaders { headers[k] = defaultHeaders[k] }
+	for k := range chapterInfoXMLHTTPHeaders { headers[k] = chapterInfoXMLHTTPHeaders[k] }
+
+	resp, err := GetUrlContent(apiUrl, headers)
+	if err != nil { return nil, errors.New(fmt.Sprintf("get api 10 error: %v", err)) }
+
+
+	type tempJson struct {
+		Data    *Comic `json:"data"`
+		Status  int    `json:"status"`
+		Message string `json:"message"`
+	}
+	var tmp tempJson
+
+	if err = json.Unmarshal([]byte(resp), &tmp); err != nil {
+		return nil, errors.New(fmt.Sprintf("unmarshal api resp error: %v", err))
+	}
+	return tmp.Data, nil
 }
 
 func (c *Chapter) GetAllImageUrl(definition string) ([]string, error) {
-	var allImageUrl []string
 	var err error
+	var comic *Comic
 
-	if err = c.GetChapterInfo(); err != nil {
-		return nil, err
+	if comic, err = c.GetChapterInfoV1(); err != nil {
+		return nil, errors.New(fmt.Sprintf("get chapter info v1 error: %v", err))
 	}
 
-	// maxDefinition := c.getMaxDefinition()
-	imgDefinition := c.getDefinitionFromStr(definition)
-	urlFmt := c.Info.ChapterDomain + c.Info.Rule + imgDefinition + ".webp"
-	for page := c.Info.StartNum; page <= c.Info.EndNum; page++ {
-		allImageUrl = append(allImageUrl, fmt.Sprintf(urlFmt, page))
+	if comic, err = GetChapterInfoV10(comic); err != nil {
+		return nil, errors.New(fmt.Sprintf("get chapter info v10 error: %v", err))
 	}
-	return allImageUrl, nil
+
+	return comic.CurrentChapter.ChapterImgList, nil
 }
 
 func (c *Chapter) Download(folderPath string) error {

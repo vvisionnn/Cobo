@@ -7,6 +7,7 @@ require (
 	github.com/antchfx/htmlquery v1.2.3 // indirect
 	github.com/antchfx/xmlquery v1.3.5 // indirect
 	github.com/axgle/mahonia v0.0.0-20180208002826-3358181d7394
+	github.com/buger/jsonparser v1.1.1
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gocolly/colly v1.2.0
 	github.com/kennygrant/sanitize v1.2.4 // indirect

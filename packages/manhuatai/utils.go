@@ -2,6 +2,7 @@ package manhuatai
 
 import (
 	"errors"
+	"fmt"
 	"github.com/gocolly/colly"
 	"io"
 	"net/http"
@@ -62,6 +63,13 @@ func getComicDefaultCollector() *colly.Collector {
 
 func regularJsonStr(Data []byte) []byte {
 	reg := regexp.MustCompile("([a-zA-Z]\\w*):")
-	regStr := reg.ReplaceAllString(string(Data), `"$1":`)
+
+	var replaceFunc func(string) string
+	replaceFunc = func(s string) string {
+		if s == "http:" { return s}
+		return fmt.Sprintf(`"%s":`, s[:len(s)-1])
+	}
+	//regStr := reg.ReplaceAllString(string(Data), `"$1":`)
+	regStr := reg.ReplaceAllStringFunc(string(Data), replaceFunc)
 	return []byte(regStr)
 }
